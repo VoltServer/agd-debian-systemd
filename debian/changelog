@@ -1,3 +1,14 @@
+systemd (252.26-1~deb12u2) bookworm; urgency=medium
+
+  [ Gioele Barabucci ]
+  * d/libnss-myhostname.nss: Install after `files` (Closes: #1072380)
+  * d/libnss-mymachines.nss: Install before `resolve` and `dns` Installing
+    `mymachines` before `dns` and `resolve` (whatever comes first) is
+    suggested in the manpage. It also avoids leaking information about
+    local machines to the DNS resolver. (Closes: #825438, #851314)
+
+ -- Luca Boccassi <bluca@debian.org>  Sun, 16 Jun 2024 10:44:31 +0100
+
 systemd (252.26-1~deb12u1) bookworm; urgency=medium
 
   * New upstream version 252.26
