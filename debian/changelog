@@ -1,3 +1,9 @@
+systemd (252.28-1~deb12u1) bookworm; urgency=medium
+
+  * New upstream version 252.28 (Closes: #1074789)
+
+ -- Luca Boccassi <bluca@debian.org>  Sun, 07 Jul 2024 11:56:20 +0100
+
 systemd (252.27-1~deb12u1) bookworm; urgency=medium
 
   * New upstream version 252.27
