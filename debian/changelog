@@ -1,3 +1,10 @@
+systemd (252.31-1~deb12u1.1) UNRELEASED; urgency=medium
+
+  * Non-maintainer upload.
+  * Backport BOOTP support from systemd/main v258
+
+ -- Avram Dorfman <dorfman@est.org>  Tue, 14 Jan 2025 13:27:10 -0500
+
 systemd (252.31-1~deb12u1) bookworm; urgency=medium
 
   * New upstream version 252.31
