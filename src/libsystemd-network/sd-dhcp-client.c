@@ -843,77 +843,78 @@ static int client_message_init(
                         if (r < 0)
                                 return r;
                 }
+
+                /* RFC2131 section 3.5:
+                in its initial DHCPDISCOVER or DHCPREQUEST message, a
+                client may provide the server with a list of specific
+                parameters the client is interested in. If the client
+                includes a list of parameters in a DHCPDISCOVER message,
+                it MUST include that list in any subsequent DHCPREQUEST
+                messages.
+                */
+
+                /* RFC7844 section 3:
+                MAY contain the Parameter Request List option. */
+                /* NOTE: in case that there would be an option to do not send
+                * any PRL at all, the size should be checked before sending */
+                if (!set_isempty(client->req_opts) && type != DHCP_RELEASE) {
+                        _cleanup_free_ uint8_t *opts = NULL;
+                        size_t n_opts, i = 0;
+                        void *val;
+
+                        n_opts = set_size(client->req_opts);
+                        opts = new(uint8_t, n_opts);
+                        if (!opts)
+                                return -ENOMEM;
+
+                        SET_FOREACH(val, client->req_opts)
+                                opts[i++] = PTR_TO_UINT8(val);
+                        assert(i == n_opts);
+
+                        /* For anonymizing the request, let's sort the options. */
+                        typesafe_qsort(opts, n_opts, cmp_uint8);
+
+                        r = dhcp_option_append(&packet->dhcp, optlen, &optoffset, 0,
+                                        SD_DHCP_OPTION_PARAMETER_REQUEST_LIST,
+                                        n_opts, opts);
+                        if (r < 0)
+                                return r;
+                }
+
+                /* RFC2131 section 3.5:
+                The client SHOULD include the ’maximum DHCP message size’ option to
+                let the server know how large the server may make its DHCP messages.
+
+                Note (from ConnMan): Some DHCP servers will send bigger DHCP packets
+                than the defined default size unless the Maximum Message Size option
+                is explicitly set
+
+                RFC3442 "Requirements to Avoid Sizing Constraints":
+                Because a full routing table can be quite large, the standard 576
+                octet maximum size for a DHCP message may be too short to contain
+                some legitimate Classless Static Route options.  Because of this,
+                clients implementing the Classless Static Route option SHOULD send a
+                Maximum DHCP Message Size [4] option if the DHCP client's TCP/IP
+                stack is capable of receiving larger IP datagrams.  In this case, the
+                client SHOULD set the value of this option to at least the MTU of the
+                interface that the client is configuring.  The client MAY set the
+                value of this option higher, up to the size of the largest UDP packet
+                it is prepared to accept.  (Note that the value specified in the
+                Maximum DHCP Message Size option is the total maximum packet size,
+                including IP and UDP headers.)
+                */
+                /* RFC7844 section 3:
+                SHOULD NOT contain any other option. */
+                if (!client->anonymize && IN_SET(type, DHCP_DISCOVER, DHCP_REQUEST)) {
+                        be16_t max_size = htobe16(MIN(client->mtu - DHCP_IP_UDP_SIZE, (uint32_t) UINT16_MAX));
+                        r = dhcp_option_append(&packet->dhcp, optlen, &optoffset, 0,
+                                        SD_DHCP_OPTION_MAXIMUM_MESSAGE_SIZE,
+                                        2, &max_size);
+                        if (r < 0)
+                                return r;
+                }
         }
 
-        /* RFC2131 section 3.5:
-           in its initial DHCPDISCOVER or DHCPREQUEST message, a
-           client may provide the server with a list of specific
-           parameters the client is interested in. If the client
-           includes a list of parameters in a DHCPDISCOVER message,
-           it MUST include that list in any subsequent DHCPREQUEST
-           messages.
-         */
-
-        /* RFC7844 section 3:
-           MAY contain the Parameter Request List option. */
-        /* NOTE: in case that there would be an option to do not send
-         * any PRL at all, the size should be checked before sending */
-        if (!set_isempty(client->req_opts) && type != DHCP_RELEASE && !client->bootp) {
-                _cleanup_free_ uint8_t *opts = NULL;
-                size_t n_opts, i = 0;
-                void *val;
-
-                n_opts = set_size(client->req_opts);
-                opts = new(uint8_t, n_opts);
-                if (!opts)
-                        return -ENOMEM;
-
-                SET_FOREACH(val, client->req_opts)
-                        opts[i++] = PTR_TO_UINT8(val);
-                assert(i == n_opts);
-
-                /* For anonymizing the request, let's sort the options. */
-                typesafe_qsort(opts, n_opts, cmp_uint8);
-
-                r = dhcp_option_append(&packet->dhcp, optlen, &optoffset, 0,
-                                       SD_DHCP_OPTION_PARAMETER_REQUEST_LIST,
-                                       n_opts, opts);
-                if (r < 0)
-                        return r;
-        }
-
-        /* RFC2131 section 3.5:
-           The client SHOULD include the ’maximum DHCP message size’ option to
-           let the server know how large the server may make its DHCP messages.
-
-           Note (from ConnMan): Some DHCP servers will send bigger DHCP packets
-           than the defined default size unless the Maximum Message Size option
-           is explicitly set
-
-           RFC3442 "Requirements to Avoid Sizing Constraints":
-           Because a full routing table can be quite large, the standard 576
-           octet maximum size for a DHCP message may be too short to contain
-           some legitimate Classless Static Route options.  Because of this,
-           clients implementing the Classless Static Route option SHOULD send a
-           Maximum DHCP Message Size [4] option if the DHCP client's TCP/IP
-           stack is capable of receiving larger IP datagrams.  In this case, the
-           client SHOULD set the value of this option to at least the MTU of the
-           interface that the client is configuring.  The client MAY set the
-           value of this option higher, up to the size of the largest UDP packet
-           it is prepared to accept.  (Note that the value specified in the
-           Maximum DHCP Message Size option is the total maximum packet size,
-           including IP and UDP headers.)
-         */
-        /* RFC7844 section 3:
-           SHOULD NOT contain any other option. */
-        if (!client->bootp && !client->anonymize && IN_SET(type, DHCP_DISCOVER, DHCP_REQUEST)) {
-                be16_t max_size = htobe16(MIN(client->mtu - DHCP_IP_UDP_SIZE, (uint32_t) UINT16_MAX));
-                r = dhcp_option_append(&packet->dhcp, optlen, &optoffset, 0,
-                                       SD_DHCP_OPTION_MAXIMUM_MESSAGE_SIZE,
-                                       2, &max_size);
-                if (r < 0)
-                        return r;
-        }
 
         *_optlen = optlen;
         *_optoffset = optoffset;
@@ -1079,11 +1080,10 @@ static int client_send_discover(sd_dhcp_client *client) {
          * bytes in the options field. The first four bites are the "magic"
          * field, so this only needs to add 60 bytes.
          */
-        if (client->bootp)
-                if (optoffset < 60 && optlen >= 60) {
-                        memset(&discover->dhcp.options[optoffset], 0, optlen - optoffset);
-                        optoffset = 60;
-                }
+        if (client->bootp && optoffset < 60 && optlen >= 60) {
+                memset(&discover->dhcp.options[optoffset], 0, optlen - optoffset);
+                optoffset = 60;
+        }
 
         /* We currently ignore:
            The client SHOULD wait a random time between one and ten seconds to
